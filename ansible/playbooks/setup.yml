@@ -1,0 +1,94 @@
+---
+# Main setup playbook for Paper.Social servers
+- name: Configure Paper.Social servers
+  hosts: all
+  become: true
+  vars:
+    app_name: paper-social
+    docker_compose_version: "1.29.2"
+  
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages
+      package:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - python3-pip
+          - git
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install Docker
+      package:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+      when: ansible_os_family == "Debian"
+
+    # For Amazon Linux
+    - name: Install Docker on Amazon Linux
+      yum:
+        name: docker
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Start and enable Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Install Docker Compose
+      get_url:
+        url: https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-{{ ansible_system }}-{{ ansible_architecture }}
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+
+    - name: Create docker group
+      group:
+        name: docker
+        state: present
+
+    - name: Add user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    - name: Create app directory
+      file:
+        path: "/opt/{{ app_name }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Install Python packages
+      pip:
+        name:
+          - docker
+          - docker-compose
+        state: present

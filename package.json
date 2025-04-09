@@ -1,0 +1,17 @@
+{
+  "name": "paper-social",
+  "version": "1.0.0",
+  "description": "A modern social media platform with multi-cloud infrastructure",
+  "main": "index.js",
+  "scripts": {
+    "start": "node app/index.js",
+    "test": "echo \"No tests specified\" && exit 0",
+    "build": "echo \"No build step required\" && exit 0"
+  },
+  "keywords": ["devops", "multi-cloud", "aws", "ibm-cloud", "terraform", "ansible"],
+  "author": "Paper.Social Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

@@ -1,0 +1,112 @@
+---
+# Monitoring setup playbook for Paper.Social servers
+- name: Configure monitoring for Paper.Social
+  hosts: all
+  become: true
+  vars:
+    app_name: paper-social
+    app_dir: "/opt/{{ app_name }}"
+    monitoring_dir: "{{ app_dir }}/monitoring"
+  
+  tasks:
+    - name: Create monitoring directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      with_items:
+        - "{{ monitoring_dir }}"
+        - "{{ monitoring_dir }}/prometheus"
+        - "{{ monitoring_dir }}/grafana/provisioning/datasources"
+        - "{{ monitoring_dir }}/grafana/provisioning/dashboards"
+        - "{{ monitoring_dir }}/loki"
+        - "{{ monitoring_dir }}/promtail"
+
+    - name: Copy Prometheus configuration
+      template:
+        src: templates/prometheus.yml.j2
+        dest: "{{ monitoring_dir }}/prometheus/prometheus.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Copy Loki configuration
+      template:
+        src: templates/loki-config.yml.j2
+        dest: "{{ monitoring_dir }}/loki/loki-config.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Copy Promtail configuration
+      template:
+        src: templates/promtail-config.yml.j2
+        dest: "{{ monitoring_dir }}/promtail/promtail-config.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Copy Grafana datasource configuration
+      template:
+        src: templates/datasource.yml.j2
+        dest: "{{ monitoring_dir }}/grafana/provisioning/datasources/datasource.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Copy Grafana dashboard configuration
+      template:
+        src: templates/dashboard.yml.j2
+        dest: "{{ monitoring_dir }}/grafana/provisioning/dashboards/dashboard.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Copy Grafana dashboards
+      template:
+        src: "templates/{{ item }}.j2"
+        dest: "{{ monitoring_dir }}/grafana/provisioning/dashboards/{{ item }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      with_items:
+        - node-exporter-dashboard.json
+        - app-dashboard.json
+
+    - name: Install node_exporter for system metrics
+      get_url:
+        url: https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
+        dest: /tmp/node_exporter.tar.gz
+        mode: '0644'
+
+    - name: Extract node_exporter
+      unarchive:
+        src: /tmp/node_exporter.tar.gz
+        dest: /tmp
+        remote_src: yes
+
+    - name: Move node_exporter binary
+      copy:
+        src: /tmp/node_exporter-1.3.1.linux-amd64/node_exporter
+        dest: /usr/local/bin/node_exporter
+        remote_src: yes
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Create node_exporter systemd service
+      template:
+        src: templates/node_exporter.service.j2
+        dest: /etc/systemd/system/node_exporter.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Start and enable node_exporter service
+      systemd:
+        name: node_exporter
+        state: started
+        enabled: yes
+        daemon_reload: yes

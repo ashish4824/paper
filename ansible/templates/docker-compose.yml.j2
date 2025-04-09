@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Web Application
+  app:
+    image: {{ app_image | default('node:16-alpine') }}
+    container_name: {{ app_name }}-app
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./app:/app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV={{ environment | default('production') }}
+    command: ["/bin/sh", "-c", "npm install && npm start"]
+    networks:
+      - app-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`{{ domain_name | default('localhost') }}`)"
+      - "traefik.http.services.app.loadbalancer.server.port=3000"
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:v2.37.0
+    container_name: {{ app_name }}-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - app-network
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:9.0.0
+    container_name: {{ app_name }}-grafana
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER={{ grafana_admin_user | default('admin') }}
+      - GF_SECURITY_ADMIN_PASSWORD={{ grafana_admin_password | default('admin') }}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+
+  # Loki for log aggregation
+  loki:
+    image: grafana/loki:2.6.0
+    container_name: {{ app_name }}-loki
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/loki:/etc/loki
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/loki-config.yml
+    networks:
+      - app-network
+
+  # Promtail for log collection
+  promtail:
+    image: grafana/promtail:2.6.0
+    container_name: {{ app_name }}-promtail
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/promtail:/etc/promtail
+      - /var/log:/var/log
+      - ./app/logs:/app/logs
+    command: -config.file=/etc/promtail/promtail-config.yml
+    networks:
+      - app-network
+    depends_on:
+      - loki
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:

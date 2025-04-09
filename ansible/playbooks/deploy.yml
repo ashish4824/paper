@@ -1,0 +1,75 @@
+---
+# Deployment playbook for Paper.Social application
+- name: Deploy Paper.Social application
+  hosts: all
+  become: true
+  vars:
+    app_name: paper-social
+    app_dir: "/opt/{{ app_name }}"
+    app_repo: "{{ app_repo_url | default('https://github.com/paper-social/paper-social.git') }}"
+    app_version: main
+  
+  tasks:
+    - name: Ensure git is installed
+      package:
+        name: git
+        state: present
+
+    - name: Clone/pull application repository
+      git:
+        repo: "{{ app_repo }}"
+        dest: "{{ app_dir }}/app"
+        version: "{{ app_version }}"
+        update: yes
+      become: yes
+      become_user: "{{ ansible_user }}"
+
+    - name: Copy docker-compose.yml
+      template:
+        src: templates/docker-compose.yml.j2
+        dest: "{{ app_dir }}/docker-compose.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Copy environment file
+      template:
+        src: templates/env.j2
+        dest: "{{ app_dir }}/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+    - name: Pull Docker images
+      community.docker.docker_compose:
+        project_src: "{{ app_dir }}"
+        pull: yes
+      become: yes
+      become_user: "{{ ansible_user }}"
+
+    - name: Start application containers
+      community.docker.docker_compose:
+        project_src: "{{ app_dir }}"
+        state: present
+      become: yes
+      become_user: "{{ ansible_user }}"
+
+    - name: Check if application is running
+      uri:
+        url: "http://localhost:3000/health"
+        status_code: 200
+      register: health_check
+      retries: 5
+      delay: 10
+      until: health_check.status == 200
+      ignore_errors: yes
+
+    - name: Application deployment status
+      debug:
+        msg: "Application deployed successfully and is running!"
+      when: health_check.status == 200
+
+    - name: Application deployment warning
+      debug:
+        msg: "Application deployed but health check failed. Please check logs."
+      when: health_check.status != 200
